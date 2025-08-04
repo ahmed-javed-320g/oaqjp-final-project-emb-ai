@@ -1,32 +1,123 @@
+<!DOCTYPE html>
 <html>
 <head>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
-    <script src="./static/mywebscript.js"></script>
+    <title>Emotion Detector</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
-        .center-heading {
-            text-align: center;
-        }
+        body { background: #f4f6f9; font-family: 'Segoe UI', sans-serif; padding-top: 30px; }
+        .container { max-width: 800px; }
+        .dominant-emotion-box { padding: 15px; border-radius: 10px; background-color: #007bff; color: white; margin-top: 20px; text-align: center; }
+        .emotion-score { border-radius: 10px; padding: 10px; margin: 5px; min-width: 100px; text-align: center; background-color: #e9ecef; }
+        .spinner-border { width: 3rem; height: 3rem; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <div class="card-body">
-            <h1 class="center-heading">NLP - Emotion Detection</h1> 
-            <div style="padding: 25px 25px 25px 25px;">
-            <h2 class="mb-3">
-                <label class="form-label">Please enter the text to be analyzed</label>
-                <input type="textarea" class="form-control" id="textToAnalyze">
-            </h2>
-
-            <div style="padding: 25px 25px 25px 25px;">
-                <button onclick="RunSentimentAnalysis()" class="btn btn-secondary">Run Sentiment Analysis</button>
+    <div class="container">
+        <div class="card shadow p-4">
+            <h1 class="text-center mb-4">🧠 NLP - Emotion Detection</h1>
+            <div class="form-group">
+                <label for="textToAnalyze">Please enter the text to be analyzed:</label>
+                <textarea id="textToAnalyze" class="form-control" rows="3"></textarea>
             </div>
-            <div style="padding: 25px 25px 25px 25px;"></div>
-            <h2 class="mb-3">
-                <label class="form-label">Result of Emotion Detection</label>
-            </h2>
-
-            <div id="system_response" style="padding: 25px 25px 25px 25px;"></div>
+            <div class="text-center mb-4">
+                <button onclick="RunSentimentAnalysis()" class="btn btn-primary">Run Sentiment Analysis</button>
+            </div>
+            <div id="loadingSpinner" class="text-center" style="display: none;">
+                <div class="spinner-border text-info" role="status"></div>
+                <p class="mt-2">Analyzing emotions...</p>
+            </div>
+            <div id="system_response">
+                <div id="emotionScores" class="d-flex flex-wrap justify-content-center"></div>
+                <div id="dominantEmotion" class="dominant-emotion-box" style="display: none;"></div>
+                <div class="chart-container mt-4">
+                    <canvas id="emotionChart"></canvas>
+                </div>
+            </div>
         </div>
     </div>
+
+    <script>
+        let chart;
+
+        function RunSentimentAnalysis() {
+            const text = document.getElementById("textToAnalyze").value.trim();
+            const spinner = document.getElementById("loadingSpinner");
+            const scoresBox = document.getElementById("emotionScores");
+            const resultBox = document.getElementById("dominantEmotion");
+            const chartCanvas = document.getElementById("emotionChart");
+
+            if (!text) {
+                alert("Please enter some text before running the analysis.");
+                return;
+            }
+
+            spinner.style.display = "block";
+            scoresBox.innerHTML = "";
+            resultBox.style.display = "none";
+            resultBox.innerHTML = "";
+            if (chart) chart.destroy();
+
+            fetch(`/emotionDetector?textToAnalyze=${encodeURIComponent(text)}`)
+                .then(response => {
+                    spinner.style.display = "none";
+                    if (!response.ok) throw new Error("Server returned status " + response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        alert("Error: " + data.error);
+                        return;
+                    }
+
+                    const emotions = ['anger', 'disgust', 'fear', 'joy', 'sadness'];
+
+                    emotions.forEach(emotion => {
+                        const score = data[emotion];
+                        if (score != null) {
+                            const percent = (score * 100).toFixed(2);
+                            const card = document.createElement("div");
+                            card.className = "emotion-score";
+                            card.innerHTML = `<strong>${emotion}</strong><br>${percent}%`;
+                            scoresBox.appendChild(card);
+                        }
+                    });
+
+                    if (data.dominant_emotion) {
+                        resultBox.style.display = "block";
+                        resultBox.innerHTML = `<strong>Dominant Emotion:</strong> ${data.dominant_emotion.toUpperCase()}`;
+                    }
+
+                    const ctx = chartCanvas.getContext("2d");
+                    chart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: emotions,
+                            datasets: [{
+                                label: 'Emotion (%)',
+                                data: emotions.map(e => (data[e] != null ? (data[e] * 100).toFixed(2) : 0)),
+                                backgroundColor: ['#ff6b6b', '#ffa94d', '#4dabf7', '#69db7c', '#a29bfe']
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: { y: { beginAtZero: true, max: 100 } },
+                            plugins: { legend: { display: false } }
+                        }
+                    });
+                })
+                .catch(err => {
+                    spinner.style.display = "none";
+                    alert("Error fetching analysis: " + err);
+                    console.error(err);
+                });
+        }
+    </script>
 </body>
+</html>
